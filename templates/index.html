@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>County Business Pattern</title>
+        <meta charset="utf-8">
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='main.css') }}">
+        <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='easyui.css') }}">
+        <script src="{{url_for('static', filename='jquery.easyui.min.js')}}"></script>
+        <script src="https://d3js.org/d3.v3.min.js"></script>
+        <script src="https://d3js.org/topojson.v1.min.js"></script>
+
+        <style type="text/css">
+         #legend {
+             list-style-type: none;
+             padding: 0px;
+             display: inline-block;
+             vertical-align: bottom;
+         }
+
+         #legend li {
+             border-left-width: 40px;
+             border-left-style: solid;
+             margin: 1px;
+             padding: 5px;
+         }
+
+         #usmap {
+             display: inline-block;
+             vertical-align: bottom;
+         }
+
+         .block{
+             min-width: 100px;
+             margin-right: 30px;
+         }
+        </style>
+    </head>
+    <body>
+
+
+
+        <h1>US Business and Labor Development Report</h1>
+        <p>The map shows provide essential business and labor development pattern on the county level, including employee concentration, the number of establishments, and the average payroll for different industries (NAICS industry). The data reflects the change of economic activity over 8 years. It provides useful measures for labor market potential, the effectiveness of government work and job training program. </p>
+        <p>Note: Data Source from CBP Survey Programs</p>
+        <hr>
+        <span class="block"> Year:
+            <select id="year" onchange="update_map()"></select>
+        </span>
+
+        <span class="block"> Industry:
+            <select id="industry" onchange="update_map()"></select>
+        </span>
+
+        <span class="block"> Plot:
+            <select id="expr" onchange="update_map()">
+                <option value="emp">Number of employees</option>
+                <option value="est">Number of establishments</option>
+                <option value="ap">Anual Payroll</option>
+                <option value="avgap">Average Anual Payroll</option>
+            </select>
+        </span>
+
+        <span class="block">
+            <input type="checkbox" id="logscale" onclick="update_map()">
+            Log Scale
+        </span>
+
+        <span class="block">
+            County: [<span id="spanFIPS"></span>] <span id="spanCounty"></span>
+        </span>
+
+        <span class="block">
+            Value: <span id="spanValue"></span>
+        </span>
+
+        <hr>
+        <h2 id="title">Title</h2>
+
+        <div id="usmap"></div>
+
+        <ul id="legend"></ul>
+
+    </body>
+
+    <script>
+     function value_to_color(value, minValue, maxValue) {
+         if (value != null) {
+             var normal = (value - minValue) / (maxValue - minValue);
+             if ($("#logscale").is(':checked')) {
+                 normal = Math.log(value - minValue) / Math.log(maxValue - minValue);
+             }
+             // Avoid overflow due to numerical error
+             normal = Math.max(0, normal);
+             normal = Math.min(1, normal);
+
+             var hue = Math.round(255 * (1 - normal));
+             return d3.hsl(hue, 1, 0.5).toString();
+         } else {
+             return 'blue';
+         }
+     }
+
+     function make_legend(minValue, maxValue) {
+         var ticks = [];
+         var num = 10;
+         for (var i = 0; i <= num; i++) {
+             ticks[num - i] = minValue + (maxValue - minValue) * i / num;
+         }
+
+         d3.select('#legend').selectAll('li').remove();
+         d3.select('#legend').selectAll('li.key').data(ticks)
+           .enter().append('li')
+           .style('border-color', function (d) {
+               return value_to_color(d, minValue, maxValue);
+           }).text(function (d) {
+               return parseFloat(d.toFixed(2));
+           });
+     }
+
+     $(function () {// Execute when document is ready
+         $.get("get/year", function(data){
+             $.each(JSON.parse(data), function(idx, year){
+                 $('#year').append($('<option>', {
+                     value: year,
+                     text : year
+                 }));
+             });
+         });
+
+         $.get("get/industry", function(data){
+             $.each(JSON.parse(data), function(naics, desc){
+                 $('#industry').append($('<option>', {
+                     value: naics,
+                     text : desc
+                 }));
+             });
+         });
+
+         // Insert the map
+         d3.json("{{url_for('static', filename='us-counties.json')}}", function (err, us) {
+             d3.select('#usmap')
+               .append("svg").attr("width", 900).attr("height", 500)
+               .selectAll("path")
+               .data(topojson.feature(us, us.objects.counties).features)
+               .enter().append("path")
+               .attr("d", d3.geo.path())
+               .style('stroke', '#777').style('fill', 'white')
+               .on('mouseover', function (d, i) {
+                   d3.select(this).style({
+                       'stroke': '#000',
+                       'fill-opacity': 0.7
+                   });
+               })
+               .on('mouseout', function (d, i) {
+                   d3.selectAll('path').style({
+                       'stroke': '#777',
+                       'fill-opacity': 1
+                   });
+               });
+
+         });
+
+         make_legend(0, 1);
+
+     });
+
+     function update_map() {
+         // Reset everything
+         $('#spanFIPS').text('');
+         $('#spanCounty').text('');
+         $('#spanValue').text('');
+         d3.select('#usmap').selectAll('svg').selectAll('path').style('fill', 'white');
+
+
+         $('#title').text(
+             $('#industry option:selected').text()
+           + '; ' + $('#year option:selected').text()
+           + '; ' + $('#expr option:selected').text()
+         );
+
+         var url = 'data/' + $('#industry').val() + '/' + $('#year').val() + '/' + $('#expr').val();
+         d3.json(url, function (err, data) {
+             var minValue = d3.min(d3.values(data));
+             var maxValue = d3.max(d3.values(data));
+             d3.select('#usmap').selectAll('svg').selectAll('path')
+               .style('fill', function (feature) {
+                   return value_to_color(data[feature.id], minValue, maxValue);
+               }).on('click', function (d) {
+                   $('#spanFIPS').text(d.id);
+                   $('#spanCounty').text(d.properties.name);
+                   $('#spanValue').text(data[d.id]);
+               });
+             make_legend(minValue, maxValue);
+         });
+
+     }
+
+
+    </script>
+</html>

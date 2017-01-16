@@ -1,0 +1,12 @@
+This is a toy project to visualize data from County Business Patterns, Census (http://www.census.gov/programs-surveys/cbp.html).
+
+Here is a live link: https://cbpviz.herokuapp.com
+
+* Dependency
+- The web app runs on Python 3.6.0
+- Flask
+- gunicorn
+
+
+
+
